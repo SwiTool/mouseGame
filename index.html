@@ -1,0 +1,258 @@
+<!doctype html>
+<html>
+<head>
+    <title>mouseGame</title>
+    <script type="text/javascript" src="/socket.io/socket.io.js"></script>
+    <script type="text/javascript" src="jscolor/jscolor.js"></script>
+    <style>
+    input {
+        padding: 0 0 0 10px;
+        font-size: x-large;
+        width: 200px;
+        height: 50px;
+    }
+    </style>
+</head>
+<body style="margin:0; overflow:hidden;">
+    <div id="askInfos" style="width:100%;height:100%;background-color:#616161;position:absolute;top:0;left:0;">
+        <div style="width: 214px;height: 56px;position: absolute;top: 0;bottom: 0;left: 0;right: 0;margin: auto;">
+            <input id="pseudo" type="text" placeholder="Your nickname" maxlength="15" style="transition: top 1s ease-out;position: relative;top: -500px;"/>
+            <input id="color" class="color {pickerMode:'HVS', hash: true}" value="" style="position:relative;top:10px;"/>
+        </div>
+    </div>
+    <div id="people" style="width:80%;height:50%;position:absolute;top:25%;left:10%;background-color:rgba(0,0,0,0.7);border:3px dashed black;display:none"></div>
+    <div id="alert" style="width:80%;height:40px;font-size:30px;color:black;background-color:rgba(0, 0, 0, 0.1);position:absolute;top:50px;left:10%;border:1px dashed black;text-align:center;display:none"></div>
+    <canvas id="canvas"></canvas>
+    <script type="text/javascript">
+    // mouse position, screen size
+    var x = -1;
+    var y = -1;
+    var lastX, lastY;
+    var mouseDown = 0;
+    var width, height;
+    var breakLink = true;
+
+    // server
+    var io = io();
+
+    var users = [];
+    var self = {};
+    var lines = [];
+    var nospam = false;
+
+    var c = document.getElementById("canvas");
+    var ctx = c.getContext("2d");
+    var body = document.body;
+    var html = document.documentElement;
+
+    io.on('connect', function(socket){
+        io.on('draw', function(obj){
+            lines.push({sx: obj.x, sy: obj.y, ex: obj.ex, ey: obj.ey, color: obj.color, radius: obj.radius});
+            draw(toMapX(obj.x), toMapY(obj.y), toMapX(obj.ex), toMapY(obj.ey), obj.color, obj.radius);
+        });
+
+        io.on('welcome', function(obj){
+            self.pseudo = obj.pseudo;
+            self.color = obj.color;
+            self.radius = obj.radius;
+            users[obj.id] = obj;
+            document.getElementById('askInfos').style.display = "none";
+            drawHud();
+            updatePeople();
+            drawAlert("Press [Space] to see connected people.");
+        });
+
+        io.on('userConnect', function(user) {
+            users[user.id] = user;
+            updatePeople();
+            drawAlert("<span style='color:green'>" + user.pseudo + " has connected.</span>");
+        });
+
+        io.on('userDc', function(id) {
+            var pseudo = users[id].pseudo;
+            delete(users[id]);
+            updatePeople();
+            drawAlert("<span style='color:red'>" + pseudo + " has disconnected.</span>");
+        });
+    });
+
+    function redraw() {
+        for (l in lines) {
+            line = lines[l];
+            //console.log(line);
+            console.log(toCoordX(line.sx), toCoordY(line.sy), toCoordX(line.ex), toCoordY(line.ey), line.color, line.radius);
+            draw(toMapX(line.sx), toMapY(line.sy), toMapX(line.ex), toMapY(line.ey), line.color, line.radius);
+        }
+        drawHud();
+    }
+
+    function draw(sx, sy, ex, ey, color, radius) {
+        ctx.lineJoin = "round";
+        ctx.beginPath();
+        ctx.strokeStyle = color;
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(ex, ey);
+        ctx.lineWidth = radius;
+        ctx.closePath();
+        ctx.stroke();
+    }
+
+    function drawHud() {
+        if (self.pseudo) {
+            ctx.fillStyle = "#FFFFFF";
+            ctx.fillRect(0, 0, 150, 70);
+            ctx.fillStyle = "#000000";
+            ctx.font="20px Georgia";
+            ctx.fillText(self.pseudo, 20, 30);
+            draw(0, 70, 150, 70, "#000000", 2);
+            draw(150, 0, 150, 70, "#000000", 2);
+            draw(20, 50, 130, 50, self.color, self.radius);
+        }
+    }
+
+    function drawAlert(msg) {
+        alert = document.getElementById("alert");
+        alert.innerHTML = msg;
+        alert.style.display = "block";
+        setTimeout(function(){
+            alert.style.display = "none";
+        }, 5000);
+    }
+
+    function displayPeople(b) {
+        if (b && self.pseudo) {
+            document.getElementById("people").style.display = "block";
+        } else {
+            document.getElementById("people").style.display = "none";
+        }
+    }
+
+    function updatePeople() {
+        list = document.getElementById("people");
+        list.innerHTML = "";
+        toApnd = "";
+        for (u in users) {
+            user = users[u];
+            toApnd += '<div style="width:120px;height:25px;background-color:' + user.color + ';display:inline-block;text-align: center;"><span>' + user.pseudo + '</span></div>';
+        }
+        list.innerHTML = toApnd;
+    }
+
+    function toCoordX(x) {
+        return ((x*100)/width);
+    }
+    function toCoordY(y) {
+        return ((y*100)/height);
+    }
+
+    function toMapX(x) {
+        return ((width/100)*x);
+    }
+    function toMapY(y) {
+        return ((height/100)*y);
+    }
+
+    function enterServer(pseudo) {
+        obj = {
+            pseudo: pseudo,
+            color: document.getElementById("color").value
+        };
+        io.emit('enterServer', obj);
+    }
+    </script>
+    <script type="text/javascript">
+
+    function onResize(e) {
+        width = document.body.clientWidth;
+        height = Math.max(body.scrollHeight, body.offsetHeight, html.clientHeight, html.scrollHeight, html.offsetHeight);
+        c.width = width;
+        c.height = height;
+        redraw();
+    }
+
+    function onKeyDown(e) {
+        switch (e.keyCode) {
+            case 13:
+            enterServer(document.getElementById("pseudo").value);
+            break;
+            case 32:
+            displayPeople(true);
+            break;
+        }
+    }
+
+    function onKeyUp(e) {
+        switch (e.keyCode) {
+            case 32:
+            displayPeople(false);
+            break;
+        }
+    }
+
+    var nospamint = 0;
+    document.body.onmousedown = function() {
+        mouseDown = 1;
+    }
+    document.body.onmouseup = function() {
+        mouseDown = 0;
+        breakLink = true;
+        clearInterval(nospamint);
+    }
+    document.body.onmouseleave = function() {
+        mouseDown = 0;
+    }
+    document.body.onresize = onResize;
+    onResize();
+
+    document.onmousemove = function(event) {
+        if (self.pseudo) {
+            var dot, eventDoc, doc, body, pageX, pageY;
+            event = event || window.event; // IE
+            if (event.pageX == null && event.clientX != null) {
+                eventDoc = (event.target && event.target.ownerDocument) || document; doc = eventDoc.documentElement; body = eventDoc.body;
+                event.pageX = event.clientX + (doc && doc.scrollLeft || body && body.scrollLeft || 0) - (doc && doc.clientLeft || body && body.clientLeft || 0);
+                event.pageY = event.clientY + (doc && doc.scrollTop  || body && body.scrollTop  || 0) - (doc && doc.clientTop  || body && body.clientTop  || 0 );
+            }
+
+            if (nospam) {
+                setTimeout(function() {
+                    nospam = false;
+                }, 60);
+            }
+
+            if (mouseDown && !nospam) {
+                if (x == -1 || y == -1) {
+                    x = event.pageX;
+                    y = event.pageY;
+                    return;
+                }
+                nospam = true;
+                if (breakLink) {
+                    lastX = event.pageX;
+                    lastY = event.pageY;
+                    breakLink = !breakLink;
+                }
+                var cx = toCoordX(lastX);
+                var cy = toCoordY(lastY);
+                var cex = toCoordX(event.pageX);
+                var cey = toCoordY(event.pageY);
+                console.log("Drawing..." + cx);
+                lines.push({sx: cx, sy: cy, ex: cex, ey: cey, color: self.color, radius: self.radius});
+                draw(lastX, lastY, event.pageX, event.pageY, self.color, self.radius);
+                io.emit("draw", {x: cx, y: cy, ex: cex, ey: cey, color: self.color});
+                drawHud();
+                lastX = event.pageX;
+                lastY = event.pageY;
+            }
+            x = event.pageX;
+            y = event.pageY;
+        }
+    }
+
+    document.onkeydown = onKeyDown;
+    document.onkeyup = onKeyUp;
+    document.getElementById("pseudo").style.top = "0px";
+    document.getElementById("color").value = Math.floor(Math.random()*16777215).toString(16);
+    </script>
+</body>
+</html>
