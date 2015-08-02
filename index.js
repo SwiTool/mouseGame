@@ -17,6 +17,8 @@ var voteAccept = 0;
 var voteDecline = 0;
 var voters = 0;
 
+var penSizes = [1, 4, 8, 12, 16];
+
 var paintCountMax = 10;      // limit 5 lines
 var paintCountDelay = 100   // for every 100ms
 
@@ -49,6 +51,7 @@ io.on('connection', function(socket) {
         if (!users[socket.id].inRoom) {
             users[socket.id].pseudo = obj.pseudo ? obj.pseudo.substr(0, 15) : users[socket.id].pseudo;
             users[socket.id].color = obj.color ? obj.color : defaultColor;
+            users[socket.id].nativeColor = users[socket.id].color;
             users[socket.id].radius = defaultRadius;
             users[socket.id].inRoom = true;
             socket.emit('welcome', users[socket.id]);
@@ -78,6 +81,7 @@ io.on('connection', function(socket) {
     socket.on('draw', function(obj) {
         if (users[socket.id].inRoom && ++users[socket.id].paintCount <= paintCountMax) {
             obj.radius = users[socket.id].radius;
+            obj.color = users[socket.id].color;
             obj.userId = users[socket.id].id;
             lines.push(obj);
             if (lines.length > maxSavedLines) {
@@ -130,6 +134,19 @@ io.on('connection', function(socket) {
                 voteResult();
             }
         }
+    });
+
+    socket.on('pen', function(obj) {
+        users[socket.id].radius = penSizes[obj.size - 1];
+        switch (obj.pen) {
+            case "pen":
+            users[socket.id].color = users[socket.id].nativeColor;
+            break;
+            case "eraser":
+            users[socket.id].color = "#FFFFFF";
+            break;
+        }
+        socket.emit('penChanged', {color: users[socket.id].color, radius: users[socket.id].radius});
     });
 });
 

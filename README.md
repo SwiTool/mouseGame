@@ -1,7 +1,11 @@
-# mouseGame
+# SockPaint
 
 Working on:
-- Eraser
+Waiting for ideas...
+
+v0.0.6:
+- Eraser ([KEYPAD 0] to switch)
+- Different sizes of paint ([KEYPAD 1] to [KEYPAD 5])
 
 v0.0.5:
 - poll to clear screen ([C] key) - under 3 players, it clears without voting.

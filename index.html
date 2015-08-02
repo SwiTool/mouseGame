@@ -47,9 +47,6 @@
     var body = document.body;
     var html = document.documentElement;
 
-    var datebegin = new Date();
-    var dateend = new Date();
-
     var helper = {
         drawAlert: function(msg) {
             alert = document.getElementById("alert");
@@ -123,7 +120,7 @@
     var drawer = {
         line: function(mx, my, mex, mey, color, radius, redraw) {
             if (!redraw)
-            lines.push({sx: mx, sy: my, ex: mex, ey: mey, color: color, radius: radius, type: "line"});
+            lines.push({sx: toCoordX(mx), sy: toCoordY(my), ex: toCoordX(mex), ey: toCoordY(mey), color: color, radius: radius, type: "line"});
             ctx.lineJoin = "round";
             ctx.beginPath();
             ctx.strokeStyle = color;
@@ -135,11 +132,11 @@
         },
         circle: function(mx, my, useless1, useless2, color, radius, redraw) {
             if (!redraw)
-            lines.push({sx: mx, sy: my, color: color, radius: 2, type: "circle"});
+            lines.push({sx: toCoordX(mx), sy: toCoordY(my), color: color, radius: radius/2, type: "circle"});
             ctx.lineJoin = "round";
             ctx.beginPath();
             ctx.fillStyle = color;
-            ctx.arc(mx, my, 2, 0, 2*Math.PI);
+            ctx.arc(mx, my, radius/2, 0, 2*Math.PI);
             ctx.closePath();
             ctx.fill();
         },
@@ -171,6 +168,24 @@
         },
         declineClear: function() {
             io.emit('askClear', false);
+        }
+    }
+
+    var pen = {
+        eraserActive: false,
+        size: 2,
+        setSize: function(size) {
+            this.size = size;
+            io.emit('pen', {pen: (this.eraserActive ? "eraser" : "pen"), size: this.size});
+        },
+        eraser: function() {
+            if (this.eraserActive) {
+                io.emit('pen', {pen: "pen", size: this.size});
+                this.eraserActive = false;
+            } else {
+                io.emit('pen', {pen: "eraser", size: this.size});
+                this.eraserActive = true;
+            }
         }
     }
 
@@ -224,12 +239,19 @@
             server.votersDecline += !vote ? 1 : 0;
             helper.updateVote();
         });
+
+        io.on('penChanged', function(obj) {
+            console.log(obj);
+            self.radius = obj.radius;
+            self.color = obj.color;
+            drawHud();
+        });
     });
 
     function redraw() {
         for (l in lines) {
             line = lines[l];
-            drawer[line.type](line.sx, line.sy, line.ex ? line.ex: null, line.ey ? line.ey : null, line.color, line.radius, true);
+            drawer[line.type](toMapX(line.sx), toMapY(line.sy), line.ex ? toMapX(line.ex): null, line.ey ? toMapY(line.ey) : null, line.color, line.radius, true);
         }
         drawHud();
     }
@@ -238,6 +260,8 @@
         if (self.pseudo) {
             var size = self.pseudo.length > 10 ? 15 : 20;
             ctx.fillStyle = "#FFFFFF";
+            ctx.fillRect(0, 0, 150, 70);
+            ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
             ctx.fillRect(0, 0, 150, 70);
             ctx.fillStyle = "#000000";
             ctx.font = size+"px Georgia";
@@ -282,8 +306,18 @@
             case 67:
             server.askClear();
             break;
-            /*default:
-            console.log(e.keyCode);*/
+            case 96:
+            pen.eraser();
+            break;
+            case 97:
+            case 98:
+            case 99:
+            case 100:
+            case 101:
+            pen.setSize(e.keyCode - 96);
+            break;
+            default:
+            console.log(e.keyCode);
         }
     }
 
@@ -295,26 +329,26 @@
         }
     }
 
+    function onStopDrawing() {
+        mouseDown = 0;
+        breakLink = true;
+        clearInterval(nospamint);
+    }
+
     var nospamint = 0;
     document.body.onmousedown = function() {
         mouseDown = 1;
         if (!nospam) {
             io.emit("draw", {sx: toCoordX(x), sy: toCoordY(y), color: self.color, type: "circle"});
-            drawer.circle(x, y, null, null, self.color);
+            drawer.circle(x, y, null, null, self.color, self.radius);
             drawHud();
         }
         nospamint = setInterval(function() {
             nospam = false;
         }, 30);
     }
-    document.body.onmouseup = function() {
-        mouseDown = 0;
-        breakLink = true;
-        clearInterval(nospamint);
-    }
-    document.body.onmouseleave = function() {
-        mouseDown = 0;
-    }
+    document.body.onmouseup = onStopDrawing
+    document.body.onmouseleave = onStopDrawing
     document.body.onresize = onResize;
     onResize();
 
@@ -329,13 +363,11 @@
             }
 
             if (mouseDown && !nospam) {
-                dateend = new Date();
                 if (x == -1 || y == -1) {
                     x = event.pageX;
                     y = event.pageY;
                     return;
                 }
-                console.log(dateend.getTime() - datebegin.getTime() + "ms");
                 nospam = true;
                 if (breakLink) {
                     lastX = event.pageX;
@@ -347,7 +379,6 @@
                 drawHud();
                 lastX = event.pageX;
                 lastY = event.pageY;
-                datebegin = new Date();
             }
             x = event.pageX;
             y = event.pageY;
