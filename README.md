@@ -1,7 +1,11 @@
 # mouseGame
 
 Working on:
-- poll to clear screen
+- Eraser
+
+v0.0.5:
+- poll to clear screen ([C] key) - under 3 players, it clears without voting.
+- better draw-managing on server
 
 v0.0.4:
 - added color choose (via color picker thanks http://jscolors.com)
@@ -15,7 +19,7 @@ v0.0.3:
 v0.0.2:
 - nickname choose
 - added nickname and color on the overlay
-- added people recap (space to view it)
+- added people recap ([Space] to view it)
 - paint on a screen percentage
 
 v0.0.1:

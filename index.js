@@ -5,8 +5,22 @@ var io = require('socket.io')(http);
 
 var colors = ["#AA0000", "#00AA00", "#0000AA", "#AAAA00", "#AA00AA", "#00AAAA", "#AAAAAA", "#EEAA66", "#777FF5", "#43C85D"];
 var i = 0;
-var users = [];
+var users = {};
 var lines = [];
+
+// poll
+var votePctAccept = 50;     // 50%
+var voteDuration = 15000;   // 15s
+var voteInProgress = false;
+var voteTimeout = 0;
+var voteAccept = 0;
+var voteDecline = 0;
+var voters = 0;
+
+var paintCountMax = 10;      // limit 5 lines
+var paintCountDelay = 100   // for every 100ms
+
+var maxSavedLines = 1000;
 
 var defaultRadius = 4;
 var defaultColor = "#000000";
@@ -23,13 +37,17 @@ io.on('connection', function(socket) {
     users[socket.id] = {
         id: socket.id,
         pseudo: "Guest" + i,
-        inRoom: false
+        inRoom: false,
+        locked: false,
+        hasVoted: false,
+        paintCount: 0,
+        paintTimeout: 0
     }
     //socket.emit("color", colors[Math.floor((Math.random() * 10))])
 
-    socket.on('enterServer', function(obj){
+    socket.on('enter', function(obj){
         if (!users[socket.id].inRoom) {
-            users[socket.id].pseudo = obj.pseudo ? obj.pseudo : users[socket.id].pseudo;
+            users[socket.id].pseudo = obj.pseudo ? obj.pseudo.substr(0, 15) : users[socket.id].pseudo;
             users[socket.id].color = obj.color ? obj.color : defaultColor;
             users[socket.id].radius = defaultRadius;
             users[socket.id].inRoom = true;
@@ -48,22 +66,93 @@ io.on('connection', function(socket) {
 
     socket.on('disconnect', function(){
         console.log(users[socket.id].pseudo + ' disconnected');
-        socket.broadcast.emit('userDc', users[socket.id].id);
+        socket.broadcast.emit('userDc', users[socket.id]);
+        var result = lines.filter(function(line, i) {
+            if (line.userId == socket.id) {
+                delete(lines[i]);
+            }
+        });
         delete users[socket.id];
     });
 
     socket.on('draw', function(obj) {
-        if (users[socket.id].inRoom) {
+        if (users[socket.id].inRoom && ++users[socket.id].paintCount <= paintCountMax) {
+            obj.radius = users[socket.id].radius;
+            obj.userId = users[socket.id].id;
             lines.push(obj);
-            if (lines.length > 1000) {
+            if (lines.length > maxSavedLines) {
                 lines.shift();
             }
-            obj.radius = users[socket.id].radius;
             socket.broadcast.emit("draw", obj);
+            if (users[socket.id].paintTimeout === 0) {
+                users[socket.id].paintTimeout = setTimeout(function() {
+                    users[socket.id].paintCount = 0;
+                    users[socket.id].paintTimeout = 0;
+                }, paintCountDelay);
+            }
         }
     })
+
+    socket.on('askClear', function(vote){
+        if (users[socket.id].hasVoted) {
+            return;
+        }
+        users[socket.id].hasVoted = true;
+        var arr = Object.keys(users);
+        var usersConnected = arr.filter(function(id) {
+            return (users[id].inRoom);
+        });
+        if (!voteInProgress && vote === undefined) {
+            voteInProgress = true;
+            // initiate the vote
+            voters = 1;
+            voteAccept += 1;
+            io.sockets.emit('voteStart', {user: users[socket.id], nbUser: usersConnected.length});
+            if (usersConnected.length <= 2) {
+                lines = [];
+                voteResult();
+            } else {
+                voteTimeout = setTimeout(function() {
+                    voteResult();
+                }, voteDuration);
+            }
+        } else if (voteInProgress){
+            // vote already exist
+            voters += 1;
+            if (vote === undefined || vote === true) {
+                voteAccept += 1;
+                io.sockets.emit('vote', true);
+            } else {
+                io.sockets.emit('vote', false);
+            }
+            if (voters >= usersConnected.length) {
+                clearTimeout(voteTimeout);
+                voteResult();
+            }
+        }
+    });
 });
 
 http.listen(1337, function(){
     console.log('listening on *:1337');
 });
+
+function voteResult() {
+    lines = [];
+    var pct = (voteAccept * 100) / voters;
+    if (pct >= votePctAccept) {
+        io.sockets.emit('clear', true);
+    } else {
+        io.sockets.emit('clear', {pct: pct, pctAccept: votePctAccept});
+    }
+    voteInProgress = false;
+    voteAccept = 0;
+    voteDecline = 0;
+    voters = 0;
+    setTimeout(function() {
+        var arr = Object.keys(users);
+        arr.filter(function(id) {
+            users[id].hasVoted = false;
+        });
+    }, 5000);
+}
