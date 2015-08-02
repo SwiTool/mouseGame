@@ -11,10 +11,15 @@
         width: 200px;
         height: 50px;
     }
+    canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+    }
     </style>
 </head>
 <body style="margin:0; overflow:hidden;">
-    <div id="askInfos" style="width:100%;height:100%;background-color:#616161;position:absolute;top:0;left:0;">
+    <div id="askInfos" style="width:100%;height:100%;background-color:#616161;position:absolute;top:0;left:0;z-index: 1000;">
         <div style="width: 214px;height: 56px;position: absolute;top: 0;bottom: 0;left: 0;right: 0;margin: auto;">
             <input id="pseudo" type="text" placeholder="Your nickname" maxlength="15" style="transition: top 1s ease-out;position: relative;top: -500px;"/>
             <input id="color" class="color {pickerMode:'HVS', hash: true}" value="" style="position:relative;top:10px;"/>
@@ -23,372 +28,391 @@
     <div id="people" style="width:80%;height:50%;position:absolute;top:25%;left:10%;background-color:rgba(0,0,0,0.7);border:3px dashed black;display:none"></div>
     <div id="alert" style="width:80%;height:40px;font-size:30px;color:black;background-color:rgba(0, 0, 0, 0.1);position:absolute;top:50px;left:10%;border:1px dashed black;text-align:center;display:none"></div>
     <div id="vote" style="width:300px;height:115px;color:white;background-color:rgba(0, 0, 0, 0.8);position:absolute;top:50px;right:50px;border:1px dashed grey;text-align:center;border-radius: 50px;display:none"></div>
-    <canvas id="canvas" style="/*background-color: black*/"></canvas>
-    <script type="text/javascript">
-    // mouse position, screen size
-    var x = -1;
-    var y = -1;
-    var lastX, lastY;
-    var mouseDown = 0;
-    var width, height;
-    var breakLink = true;
-    var votebarWidth = 200;
+    <canvas id="overlay"</canvas>
+        <canvas id="drawings"></canvas>
+        <script type="text/javascript">
+        // mouse position, screen size
+        var x = -1;
+        var y = -1;
+        var lastX, lastY;
+        var mouseDown = 0;
+        var width, height;
+        var breakLink = true;
+        var votebarWidth = 200;
 
-    // server
-    var io = io();
+        // server
+        var io = io();
 
-    var users = [];
-    var self = {};
-    var lines = [];
-    var nospam = false;
+        var users = [];
+        var self = {};
+        var lines = [];
+        var nospam = false;
 
-    var c = document.getElementById("canvas");
-    var ctx = c.getContext("2d");
-    var body = document.body;
-    var html = document.documentElement;
-
-    var helper = {
-        drawAlert: function(msg) {
-            alert = document.getElementById("alert");
-            alert.innerHTML = msg;
-            alert.style.display = "block";
-            setTimeout(function(){
-                alert.style.display = "none";
-            }, 5000);
-        },
-        displayPeople: function(b) {
-            if (b && self.pseudo) {
-                document.getElementById("people").style.display = "block";
-            } else {
-                document.getElementById("people").style.display = "none";
-            }
-        },
-        updatePeople: function() {
-            list = document.getElementById("people");
-            list.innerHTML = "";
-            var toApnd = "";
-            for (u in users) {
-                user = users[u];
-                if (user.color) {
-                    toApnd += '<div style="width:120px;height:25px;background-color:' + user.color + ';display:inline-block;text-align: center;"><span>' + user.pseudo + '</span></div>';
+        var overlay = {
+            px: 0,
+            py: 0,
+            canvas: document.getElementById("overlay"),
+            ctx: document.getElementById("overlay").getContext("2d"),
+            drawHud: function() {
+                if (self.pseudo) {
+                    var size = self.pseudo.length > 10 ? 15 : 20;
+                    overlay.ctx.fillStyle = "#FFFFFF";
+                    overlay.ctx.fillRect(0, 0, 150, 70);
+                    overlay.ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+                    overlay.ctx.fillRect(0, 0, 150, 70);
+                    overlay.ctx.fillStyle = "#000000";
+                    overlay.ctx.font = size+"px Georgia";
+                    overlay.ctx.fillText(self.pseudo, 20, 30);
+                    // j'en suis ici, la fameuse fonction que je retourne en tant qu'objet ?
+                    // ça ne marche pas
+                    drawings.drawer.line(0, 70, 150, 70, "#000000", 2);
+                    drawings.drawer.line(150, 0, 150, 70, "#000000", 2);
+                    drawings.drawer.line(20, 50, 130, 50, self.color, self.radius);
                 }
             }
-            list.innerHTML = toApnd;
-        },
-        beginVote: function(b) {
-            vote = document.getElementById("vote");
-            var toApnd = '<div style="padding: 10px">' + "Clear canvas ?" + '</div>';
-            toApnd += '<div id="voteResult" style="top:0;bottom:0;left:0;right:0;margin:auto;width:' + votebarWidth + 'px;height:20px;">\
-            <span id="votedAccept" style="float:left;background-color:green;width:' + (server.votersAccept*votebarWidth)/server.voters + 'px;height:20px;border-bottom-left-radius:50px;border-top-left-radius:50px;"></span>\
-            <span id="votedDecline" style="float:right;background-color:red;width:' + (server.votersDecline*votebarWidth)/server.voters +'px;height:20px;border-bottom-right-radius:50px;border-top-right-radius:50px;"></span>\
-            </div>';
-            toApnd += '<div id="voteButtons" style="padding-top:15px;width:200px;top:0;left:0;bottom:0;right:0;margin:auto;">';
-            if (!b) {
-                toApnd += '<button onclick="helper.vote(true)" style="float:left;width: 70px;height:25px;background-color:lightgreen;border: 2px outset lightgreen;">Yes</button><button onclick="helper.vote(false)" style="float:right;width:70px;height:25px;background-color:lightsalmon;border: 2px outset lightsalmon;">No</button>';
-            }
-            toApnd += '</div>';
-            vote.style.display = "block";
-            vote.innerHTML = toApnd;
-        },
-        updateVote: function() {
-            document.getElementById("votedAccept").style.width = (server.votersAccept*votebarWidth)/server.voters+"px";
-            document.getElementById("votedDecline").style.width = (server.votersDecline*votebarWidth)/server.voters+"px";
-        },
-        vote: function(vote) {
-            if (vote) {
-                server.acceptClear();
-            } else {
-                server.declineClear();
-            }
-            document.getElementById("voteButtons").innerHTML = 'You voted <span style="color:' + (vote ? "green" : "red") + '">' + (vote ? "YES" : "NO") + '<span>';
-        },
-        voteResult: function(obj) {
-            if (obj === true) {
-                document.getElementById("voteButtons").innerHTML = "Vote passed !";
-            } else {
-                document.getElementById("voteButtons").innerHTML = "Yes: " + Math.floor(obj.pct)+"%, need at least " + obj.pctAccept + "%.";
-            }
-            setTimeout(function() {
-                vote = document.getElementById("vote").style.display = "none";
-            }, 3000);
-            server.votersAccept = 0;
-            server.votersDecline = 0;
-            server.voters = 0;
         }
-    }
+        overlay.drawer = new getDrawer(overlay.ctx);
+        console.log(overlay);
 
-    var drawer = {
-        line: function(mx, my, mex, mey, color, radius, redraw) {
-            if (!redraw)
-            lines.push({sx: toCoordX(mx), sy: toCoordY(my), ex: toCoordX(mex), ey: toCoordY(mey), color: color, radius: radius, type: "line"});
-            ctx.lineJoin = "round";
-            ctx.beginPath();
-            ctx.strokeStyle = color;
-            ctx.moveTo(mx, my);
-            ctx.lineTo(mex, mey);
-            ctx.lineWidth = radius;
-            ctx.closePath();
-            ctx.stroke();
-        },
-        circle: function(mx, my, useless1, useless2, color, radius, redraw) {
-            if (!redraw)
-            lines.push({sx: toCoordX(mx), sy: toCoordY(my), color: color, radius: radius/2, type: "circle"});
-            ctx.lineJoin = "round";
-            ctx.beginPath();
-            ctx.fillStyle = color;
-            ctx.arc(mx, my, radius/2, 0, 2*Math.PI);
-            ctx.closePath();
-            ctx.fill();
-        },
-        rectangle: function(mx, my, sx, sy, color) {
-            ctx.beginPath();
-            ctx.fillStyle = color;
-            ctx.fillRect(mx, my, sx, sy);
-            ctx.closePath();
-            ctx.fill();
+        var drawings = {
+            px: 0,
+            py: 70,
+            canvas: document.getElementById("drawings"),
+            ctx: document.getElementById("drawings").getContext("2d"),
+            pen: {
+                eraserActive: false,
+                size: 2,
+                setSize: function(size) {
+                    this.size = size;
+                    io.emit('pen', {pen: (this.eraserActive ? "eraser" : "pen"), size: this.size});
+                },
+                eraser: function() {
+                    if (this.eraserActive) {
+                        io.emit('pen', {pen: "pen", size: this.size});
+                        this.eraserActive = false;
+                    } else {
+                        io.emit('pen', {pen: "eraser", size: this.size});
+                        this.eraserActive = true;
+                    }
+                }
+            },
+            redraw: function() {
+                for (l in lines) {
+                    line = lines[l];
+                    this.drawer[line.type](toMapX(line.sx), toMapY(line.sy), line.ex ? toMapX(line.ex): null, line.ey ? toMapY(line.ey) : null, line.color, line.radius, true);
+                }
+                overlay.drawHud();
+            }
         }
-    }
+        drawings.drawer = new getDrawer(drawings.ctx);
 
-    var server = {
-        voters: 0,
-        votersAccept: 0,
-        votersDecline: 0,
-        enter: function(pseudo) {
-            obj = {
-                pseudo: pseudo,
-                color: document.getElementById("color").value
+        function getDrawer(ctx) {
+            this.line = function(mx, my, mex, mey, color, radius, redraw) {
+                if (!redraw)
+                lines.push({sx: toCoordX(mx), sy: toCoordY(my), ex: toCoordX(mex), ey: toCoordY(mey), color: color, radius: radius, type: "line"});
+                ctx.lineJoin = "round";
+                ctx.beginPath();
+                ctx.strokeStyle = color;
+                ctx.moveTo(mx, my);
+                ctx.lineTo(mex, mey);
+                ctx.lineWidth = radius;
+                ctx.closePath();
+                ctx.stroke();
             };
-            io.emit('enter', obj);
-        },
-        askClear: function() {
-            io.emit('askClear');
-        },
-        acceptClear: function() {
-            io.emit('askClear', true);
-        },
-        declineClear: function() {
-            io.emit('askClear', false);
+            this.circle = function(mx, my, useless1, useless2, color, radius, redraw) {
+                if (!redraw)
+                lines.push({sx: toCoordX(mx), sy: toCoordY(my), color: color, radius: radius/2, type: "circle"});
+                ctx.lineJoin = "round";
+                ctx.beginPath();
+                ctx.fillStyle = color;
+                ctx.arc(mx, my, radius/2, 0, 2*Math.PI);
+                ctx.closePath();
+                ctx.fill();
+            };
+            this.rectangle = function(mx, my, sx, sy, color) {
+                ctx.beginPath();
+                ctx.fillStyle = color;
+                ctx.fillRect(mx, my, sx, sy);
+                ctx.closePath();
+                ctx.fill();
+            };
         }
-    }
 
-    var pen = {
-        eraserActive: false,
-        size: 2,
-        setSize: function(size) {
-            this.size = size;
-            io.emit('pen', {pen: (this.eraserActive ? "eraser" : "pen"), size: this.size});
-        },
-        eraser: function() {
-            if (this.eraserActive) {
-                io.emit('pen', {pen: "pen", size: this.size});
-                this.eraserActive = false;
-            } else {
-                io.emit('pen', {pen: "eraser", size: this.size});
-                this.eraserActive = true;
-            }
-        }
-    }
+        var body = document.body;
+        var html = document.documentElement;
 
-    io.on('connect', function(socket){
-        io.on('draw', function(obj){
-            drawer[obj.type](toMapX(obj.sx), toMapY(obj.sy), obj.ex ? toMapX(obj.ex): null, obj.ey ? toMapY(obj.ey) : null, obj.color, obj.radius);
-        });
-
-        io.on('welcome', function(obj){
-            self.pseudo = obj.pseudo;
-            self.color = obj.color;
-            self.radius = obj.radius;
-            users[obj.id] = obj;
-            document.getElementById('askInfos').style.display = "none";
-            drawHud();
-            helper.updatePeople();
-            helper.drawAlert("Press [Space] to see connected people.");
-        });
-
-        io.on('userConnect', function(user) {
-            users[user.id] = user;
-            helper.updatePeople();
-            helper.drawAlert("<span style='color:green'>" + user.pseudo + " has connected.</span>");
-        });
-
-        io.on('userDc', function(user) {
-            helper.drawAlert("<span style='color:red'>" + user.pseudo + " has disconnected.</span>");
-            delete(users[user.id]);
-            helper.updatePeople();
-        });
-
-        io.on('clear', function(result) {
-            if (result === true) {
-                lines = [];
-                drawer.rectangle(0, 0, width, height, "#FFFFFF");
-                drawHud();
-                helper.voteResult(true);
-            } else {
-                helper.voteResult(result);
-            }
-        });
-
-        io.on('voteStart', function(obj) {
-            server.votersAccept = 1;
-            server.voters = obj.nbUser;
-            helper.beginVote(obj.user.pseudo == self.pseudo);
-        });
-
-        io.on('vote', function(vote) {
-            server.votersAccept += vote ? 1 : 0;
-            server.votersDecline += !vote ? 1 : 0;
-            helper.updateVote();
-        });
-
-        io.on('penChanged', function(obj) {
-            console.log(obj);
-            self.radius = obj.radius;
-            self.color = obj.color;
-            drawHud();
-        });
-    });
-
-    function redraw() {
-        for (l in lines) {
-            line = lines[l];
-            drawer[line.type](toMapX(line.sx), toMapY(line.sy), line.ex ? toMapX(line.ex): null, line.ey ? toMapY(line.ey) : null, line.color, line.radius, true);
-        }
-        drawHud();
-    }
-
-    function drawHud() {
-        if (self.pseudo) {
-            var size = self.pseudo.length > 10 ? 15 : 20;
-            ctx.fillStyle = "#FFFFFF";
-            ctx.fillRect(0, 0, 150, 70);
-            ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-            ctx.fillRect(0, 0, 150, 70);
-            ctx.fillStyle = "#000000";
-            ctx.font = size+"px Georgia";
-            ctx.fillText(self.pseudo, 20, 30);
-            drawer.line(0, 70, 150, 70, "#000000", 2);
-            drawer.line(150, 0, 150, 70, "#000000", 2);
-            drawer.line(20, 50, 130, 50, self.color, self.radius);
-        }
-    }
-
-    function toCoordX(x) {
-        return ((x*100)/width);
-    }
-    function toCoordY(y) {
-        return ((y*100)/height);
-    }
-    function toMapX(x) {
-        return ((width/100)*x);
-    }
-    function toMapY(y) {
-        return ((height/100)*y);
-    }
-    </script>
-    <script type="text/javascript">
-
-    function onResize(e) {
-        width = document.body.clientWidth;
-        height = Math.max(body.scrollHeight, body.offsetHeight, html.clientHeight, html.scrollHeight, html.offsetHeight);
-        c.width = width;
-        c.height = height;
-        redraw();
-    }
-
-    function onKeyDown(e) {
-        switch (e.keyCode) {
-            case 13:
-            server.enter(document.getElementById("pseudo").value);
-            break;
-            case 32:
-            helper.displayPeople(true);
-            break;
-            case 67:
-            server.askClear();
-            break;
-            case 96:
-            pen.eraser();
-            break;
-            case 97:
-            case 98:
-            case 99:
-            case 100:
-            case 101:
-            pen.setSize(e.keyCode - 96);
-            break;
-            default:
-            console.log(e.keyCode);
-        }
-    }
-
-    function onKeyUp(e) {
-        switch (e.keyCode) {
-            case 32:
-            helper.displayPeople(false);
-            break;
-        }
-    }
-
-    function onStopDrawing() {
-        mouseDown = 0;
-        breakLink = true;
-        clearInterval(nospamint);
-    }
-
-    var nospamint = 0;
-    document.body.onmousedown = function() {
-        mouseDown = 1;
-        if (!nospam) {
-            io.emit("draw", {sx: toCoordX(x), sy: toCoordY(y), color: self.color, type: "circle"});
-            drawer.circle(x, y, null, null, self.color, self.radius);
-            drawHud();
-        }
-        nospamint = setInterval(function() {
-            nospam = false;
-        }, 30);
-    }
-    document.body.onmouseup = onStopDrawing
-    document.body.onmouseleave = onStopDrawing
-    document.body.onresize = onResize;
-    onResize();
-
-    document.onmousemove = function(event) {
-        if (self.pseudo) {
-            var dot, eventDoc, doc, body, pageX, pageY;
-            event = event || window.event; // IE
-            if (event.pageX == null && event.clientX != null) {
-                eventDoc = (event.target && event.target.ownerDocument) || document; doc = eventDoc.documentElement; body = eventDoc.body;
-                event.pageX = event.clientX + (doc && doc.scrollLeft || body && body.scrollLeft || 0) - (doc && doc.clientLeft || body && body.clientLeft || 0);
-                event.pageY = event.clientY + (doc && doc.scrollTop  || body && body.scrollTop  || 0) - (doc && doc.clientTop  || body && body.clientTop  || 0 );
-            }
-
-            if (mouseDown && !nospam) {
-                if (x == -1 || y == -1) {
-                    x = event.pageX;
-                    y = event.pageY;
-                    return;
+        var helper = {
+            drawAlert: function(msg) {
+                alert = document.getElementById("alert");
+                alert.innerHTML = msg;
+                alert.style.display = "block";
+                setTimeout(function(){
+                    alert.style.display = "none";
+                }, 5000);
+            },
+            displayPeople: function(b) {
+                if (b && self.pseudo) {
+                    document.getElementById("people").style.display = "block";
+                } else {
+                    document.getElementById("people").style.display = "none";
                 }
-                nospam = true;
-                if (breakLink) {
-                    lastX = event.pageX;
-                    lastY = event.pageY;
-                    breakLink = !breakLink;
+            },
+            updatePeople: function() {
+                list = document.getElementById("people");
+                list.innerHTML = "";
+                var toApnd = "";
+                for (u in users) {
+                    user = users[u];
+                    if (user.color) {
+                        toApnd += '<div style="width:120px;height:25px;background-color:' + user.color + ';display:inline-block;text-align: center;"><span>' + user.pseudo + '</span></div>';
+                    }
                 }
-                io.emit("draw", {sx: toCoordX(lastX), sy: toCoordY(lastY), ex: toCoordX(event.pageX), ey: toCoordY(event.pageY), color: self.color, type: "line"});
-                drawer.line(lastX, lastY, event.pageX, event.pageY, self.color, self.radius);
-                drawHud();
-                lastX = event.pageX;
-                lastY = event.pageY;
+                list.innerHTML = toApnd;
+            },
+            beginVote: function(b) {
+                vote = document.getElementById("vote");
+                var toApnd = '<div style="padding: 10px">' + "Clear canvas ?" + '</div>';
+                toApnd += '<div id="voteResult" style="top:0;bottom:0;left:0;right:0;margin:auto;width:' + votebarWidth + 'px;height:20px;">\
+                <span id="votedAccept" style="float:left;background-color:green;width:' + (server.votersAccept*votebarWidth)/server.voters + 'px;height:20px;border-bottom-left-radius:50px;border-top-left-radius:50px;"></span>\
+                <span id="votedDecline" style="float:right;background-color:red;width:' + (server.votersDecline*votebarWidth)/server.voters +'px;height:20px;border-bottom-right-radius:50px;border-top-right-radius:50px;"></span>\
+                </div>';
+                toApnd += '<div id="voteButtons" style="padding-top:15px;width:200px;top:0;left:0;bottom:0;right:0;margin:auto;">';
+                if (!b) {
+                    toApnd += '<button onclick="helper.vote(true)" style="float:left;width: 70px;height:25px;background-color:lightgreen;border: 2px outset lightgreen;">Yes</button><button onclick="helper.vote(false)" style="float:right;width:70px;height:25px;background-color:lightsalmon;border: 2px outset lightsalmon;">No</button>';
+                }
+                toApnd += '</div>';
+                vote.style.display = "block";
+                vote.innerHTML = toApnd;
+            },
+            updateVote: function() {
+                document.getElementById("votedAccept").style.width = (server.votersAccept*votebarWidth)/server.voters+"px";
+                document.getElementById("votedDecline").style.width = (server.votersDecline*votebarWidth)/server.voters+"px";
+            },
+            vote: function(vote) {
+                if (vote) {
+                    server.acceptClear();
+                } else {
+                    server.declineClear();
+                }
+                document.getElementById("voteButtons").innerHTML = 'You voted <span style="color:' + (vote ? "green" : "red") + '">' + (vote ? "YES" : "NO") + '<span>';
+            },
+            voteResult: function(obj) {
+                if (obj === true) {
+                    document.getElementById("voteButtons").innerHTML = "Vote passed !";
+                } else {
+                    document.getElementById("voteButtons").innerHTML = "Yes: " + Math.floor(obj.pct)+"%, need at least " + obj.pctAccept + "%.";
+                }
+                setTimeout(function() {
+                    vote = document.getElementById("vote").style.display = "none";
+                }, 3000);
+                server.votersAccept = 0;
+                server.votersDecline = 0;
+                server.voters = 0;
             }
-            x = event.pageX;
-            y = event.pageY;
         }
-    }
 
-    document.onkeydown = onKeyDown;
-    document.onkeyup = onKeyUp;
-    document.getElementById("pseudo").style.top = "0px";
-    document.getElementById("color").value = Math.floor(Math.random()*16777215).toString(16);
-    </script>
-</body>
-</html>
+        var server = {
+            voters: 0,
+            votersAccept: 0,
+            votersDecline: 0,
+            enter: function(pseudo) {
+                obj = {
+                    pseudo: pseudo,
+                    color: document.getElementById("color").value
+                };
+                io.emit('enter', obj);
+            },
+            askClear: function() {
+                io.emit('askClear');
+            },
+            acceptClear: function() {
+                io.emit('askClear', true);
+            },
+            declineClear: function() {
+                io.emit('askClear', false);
+            }
+        }
+
+        io.on('connect', function(socket){
+            io.on('draw', function(obj){
+                drawings.drawer[obj.type](toMapX(obj.sx), toMapY(obj.sy), obj.ex ? toMapX(obj.ex): null, obj.ey ? toMapY(obj.ey) : null, obj.color, obj.radius);
+            });
+
+            io.on('welcome', function(obj){
+                self.pseudo = obj.pseudo;
+                self.color = obj.color;
+                self.radius = obj.radius;
+                users[obj.id] = obj;
+                document.getElementById('askInfos').style.display = "none";
+                overlay.drawHud();
+                helper.updatePeople();
+                helper.drawAlert("Press [Space] to see connected people.");
+            });
+
+            io.on('userConnect', function(user) {
+                users[user.id] = user;
+                helper.updatePeople();
+                helper.drawAlert("<span style='color:green'>" + user.pseudo + " has connected.</span>");
+            });
+
+            io.on('userDc', function(user) {
+                helper.drawAlert("<span style='color:red'>" + user.pseudo + " has disconnected.</span>");
+                delete(users[user.id]);
+                helper.updatePeople();
+            });
+
+            io.on('clear', function(result) {
+                if (result === true) {
+                    lines = [];
+                    drawings.drawer.rectangle(0, 0, width, height, "#FFFFFF");
+                    overlay.drawHud();
+                    helper.voteResult(true);
+                } else {
+                    helper.voteResult(result);
+                }
+            });
+
+            io.on('voteStart', function(obj) {
+                server.votersAccept = 1;
+                server.voters = obj.nbUser;
+                helper.beginVote(obj.user.pseudo == self.pseudo);
+            });
+
+            io.on('vote', function(vote) {
+                server.votersAccept += vote ? 1 : 0;
+                server.votersDecline += !vote ? 1 : 0;
+                helper.updateVote();
+            });
+
+            io.on('penChanged', function(obj) {
+                console.log(obj);
+                self.radius = obj.radius;
+                self.color = obj.color;
+                overlay.drawHud();
+            });
+        });
+
+        function toCoordX(x) {
+            return ((x*100)/width);
+        }
+        function toCoordY(y) {
+            return ((y*100)/height);
+        }
+        function toMapX(x) {
+            return ((width/100)*x);
+        }
+        function toMapY(y) {
+            return ((height/100)*y);
+        }
+        </script>
+        <script type="text/javascript">
+
+        function onResize(e) {
+            width = document.body.clientWidth;
+            height = Math.max(body.scrollHeight, body.offsetHeight, html.clientHeight, html.scrollHeight, html.offsetHeight);
+            overlay.canvas.width = width;
+            overlay.canvas.height = 50;
+            overlay.canvas.style.top = overlay.py+"px";
+            overlay.canvas.style.left = overlay.px+"px";
+
+            drawings.canvas.width = width;
+            drawings.canvas.height = height - 50;
+            drawings.canvas.style.top = drawings.py+"px";
+            drawings.canvas.style.left = drawings.px+"px";
+            drawings.redraw();
+        }
+        document.onkeydown = onKeyDown;
+        document.onkeyup = onKeyUp;
+        document.body.onresize = onResize;
+        onResize();
+
+        function onKeyDown(e) {
+            switch (e.keyCode) {
+                case 13:
+                server.enter(document.getElementById("pseudo").value);
+                break;
+                case 32:
+                helper.displayPeople(true);
+                break;
+                case 67:
+                server.askClear();
+                break;
+                case 96:
+                drawings.pen.eraser();
+                break;
+                case 97:
+                case 98:
+                case 99:
+                case 100:
+                case 101:
+                drawings.pen.setSize(e.keyCode - 96);
+                break;
+                default:
+                console.log(e.keyCode);
+            }
+        }
+
+        function onKeyUp(e) {
+            switch (e.keyCode) {
+                case 32:
+                helper.displayPeople(false);
+                break;
+            }
+        }
+
+        function onStopDrawing() {
+            mouseDown = 0;
+            breakLink = true;
+            clearInterval(nospamint);
+        }
+
+        var nospamint = 0;
+        document.getElementById("drawings").onmousedown = function() {
+            mouseDown = 1;
+            if (!nospam) {
+                io.emit("draw", {sx: toCoordX(x), sy: toCoordY(y), color: self.color, type: "circle"});
+                drawings.drawer.circle(x, y, null, null, self.color, self.radius);
+            }
+            nospamint = setInterval(function() {
+                nospam = false;
+            }, 30);
+        }
+        document.getElementById("drawings").onmouseup = onStopDrawing
+        document.getElementById("drawings").onmouseleave = onStopDrawing
+        document.getElementById("drawings").onmousemove = function(event) {
+            if (self.pseudo) {
+                var dot, eventDoc, doc, body, pageX, pageY;
+                event = event || window.event; // IE
+                if (event.pageX == null && event.clientX != null) {
+                    eventDoc = (event.target && event.target.ownerDocument) || document; doc = eventDoc.documentElement; body = eventDoc.body;
+                    event.pageX = event.clientX + (doc && doc.scrollLeft || body && body.scrollLeft || 0) - (doc && doc.clientLeft || body && body.clientLeft || 0);
+                    event.pageY = event.clientY + (doc && doc.scrollTop  || body && body.scrollTop  || 0) - (doc && doc.clientTop  || body && body.clientTop  || 0 );
+                }
+
+                if (mouseDown && !nospam) {
+                    if (x == -1 || y == -1) {
+                        x = event.pageX - drawings.px;
+                        y = event.pageY - drawings.py;
+                        return;
+                    }
+                    nospam = true;
+                    if (breakLink) {
+                        lastX = event.pageX - drawings.px;
+                        lastY = event.pageY - drawings.py;
+                        breakLink = !breakLink;
+                    }
+                    io.emit("draw", {sx: toCoordX(lastX), sy: toCoordY(lastY), ex: toCoordX(event.pageX - drawings.px), ey: toCoordY(event.pageY - drawings.py), color: self.color, type: "line"});
+                    drawings.drawer.line(lastX, lastY, event.pageX - drawings.px, event.pageY - drawings.py, self.color, self.radius);
+                    lastX = event.pageX - drawings.px;
+                    lastY = event.pageY - drawings.py;
+                }
+                x = event.pageX - drawings.px;
+                y = event.pageY - drawings.py;
+            }
+        }
+
+        document.getElementById("pseudo").style.top = "0px";
+        document.getElementById("color").value = Math.floor(Math.random()*16777215).toString(16);
+        </script>
+    </body>
+    </html>
