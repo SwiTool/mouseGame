@@ -1,7 +1,9 @@
 # SockPaint
 
-Working on:
-Waiting for ideas...
+Working on: waiting for ideas..
+
+v0.0.8:
+- added pipette (key [P] then click to choose color. You can click&drag to be more accurate)
 
 v0.0.7:
 - code optimization

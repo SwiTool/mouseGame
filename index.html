@@ -30,7 +30,7 @@
         </div>
     </div>
     <div id="people" style="width:80%;height:50%;position:absolute;top:25%;left:10%;background-color:rgba(0,0,0,0.7);border:3px dashed black;display:none"></div>
-    <div id="alert" style="width:80%;height:40px;font-size:30px;color:black;background-color:rgba(0, 0, 0, 0.1);position:absolute;top:15px;left:10%;border:1px dashed black;text-align:center;display:none"></div>
+    <div id="alert" style="width: 300px;color: white;position: absolute;bottom: 70px;left: 0;text-align: center;"></div>
     <div id="vote" style="width:300px;height:115px;color:white;background-color:rgba(0, 0, 0, 0.8);position:absolute;top:50px;right:50px;border:1px dashed grey;text-align:center;border-radius: 50px;display:none"></div>
     <canvas id="overlay"></canvas>
     <canvas id="drawings"></canvas>
@@ -38,8 +38,10 @@
     // mouse position, screen size
     var x = -1;
     var y = -1;
+    var notifCnt = 0;
     var lastX, lastY;
     var width, height;
+    var nospamint = 0;
 
     var overlayHeight = 70;
 
@@ -107,6 +109,54 @@
             imageData = overlay.ctx.getImageData(overlay.colorX, overlay.colorY, 1, 1);
             self.color = rgbToHex(imageData.data[0], imageData.data[1], imageData.data[2]);
             overlay.drawHud();
+        },
+        events: {
+            onMouseDown: function(e) {
+                overlay.colorX = e.layerX;
+                overlay.colorY = e.layerY;
+                document.getElementById("overlay").onmousemove = function(e) {
+                    overlay.colorX = e.layerX;
+                    overlay.colorY = e.layerY;
+                }
+                overlay.colorTimer = setInterval(overlay.getColor, 50);
+            },
+            onMouseUp: function() {
+                clearInterval(overlay.colorTimer);
+                document.getElementById("overlay").onmousemove = null;
+                io.emit('setColor', self.color);
+            }
+        },
+        detectColor: function() {
+            document.getElementById("drawings").onmousedown = overlay.detectColorDown;
+            document.getElementById("drawings").onmouseup = overlay.detectColorUp;
+            document.getElementById("drawings").onmouseleave = function() {
+                clearInterval(overlay.colorTimer);
+                document.getElementById("drawings").onmousedown = drawings.events.onMouseDown;
+                document.getElementById("drawings").onmouseup = drawings.events.onStopDrawing;
+                document.getElementById("drawings").onmouseleave = drawings.events.onStopDrawing;
+                self.color = overlay.saveColor;
+                overlay.drawHud();
+            };
+        },
+        detectColorDown: function(e) {
+            overlay.saveColor = self.color;
+            overlay.colorX = e.layerX;
+            overlay.colorY = e.layerY;
+            document.getElementById("drawings").onmousemove = function(e) {
+                overlay.colorX = e.layerX;
+                overlay.colorY = e.layerY;
+            }
+            overlay.colorTimer = setInterval(drawings.getColor, 50);
+        },
+        detectColorUp: function(e) {
+            clearInterval(overlay.colorTimer);
+            document.getElementById("drawings").onmousedown = drawings.events.onMouseDown;
+            document.getElementById("drawings").onmouseup = drawings.events.onStopDrawing;
+            document.getElementById("drawings").onmouseleave = drawings.events.onStopDrawing;
+            if (drawings.pen.eraserActive == true) {
+                drawings.pen.eraserActive = false;
+            }
+            io.emit('setColor', self.color);
         }
     }
     overlay.drawer = new getDrawer(overlay.ctx);
@@ -116,6 +166,10 @@
         py: 0,
         canvas: document.getElementById("drawings"),
         ctx: document.getElementById("drawings").getContext("2d"),
+        init: function() {
+            drawings.ctx.fillStyle = "#FFFFFF";
+            drawings.ctx.fillRect(0, 0, width, height);
+        },
         pen: {
             eraserActive: false,
             size: 2,
@@ -134,10 +188,45 @@
             }
         },
         redraw: function() {
+            drawings.init();
             for (l in lines) {
                 line = lines[l];
                 this.drawer[line.type](toMapX(line.sx), toMapY(line.sy), line.ex ? toMapX(line.ex): null, line.ey ? toMapY(line.ey) : null, line.color, line.radius, true);
             }
+        },
+        events: {
+            onMouseDown: function(e) {
+                if (self.pseudo) {
+                    x = e.layerX;
+                    y = e.layerY;
+                    lastX = x;
+                    lastY = y;
+                    io.emit("draw", {sx: toCoordX(x), sy: toCoordY(y), color: self.color, type: "circle"});
+                    drawings.drawer.circle(x, y, null, null, self.color, self.radius);
+                    nospamint = setInterval(function() {
+                        nospam = false;
+                    }, 30);
+                }
+                document.getElementById("drawings").onmousemove = function(e) {
+                    if (!nospam) {
+                        nospam = true;
+                        io.emit("draw", {sx: toCoordX(lastX), sy: toCoordY(lastY), ex: toCoordX(e.layerX), ey: toCoordY(e.layerY), color: self.color, type: "line"});
+                        drawings.drawer.line(lastX, lastY, e.layerX, e.layerY, self.color, self.radius);
+                        lastX = e.layerX;
+                        lastY = e.layerY;
+                    }
+                }
+            },
+            onStopDrawing: function() {
+                clearInterval(nospamint);
+                document.getElementById("drawings").onmousemove = null;
+            }
+        },
+        getColor: function(e) {
+            var newColor;
+            imageData = drawings.ctx.getImageData(overlay.colorX, overlay.colorY, 1, 1);
+            self.color = rgbToHex(imageData.data[0], imageData.data[1], imageData.data[2]);
+            overlay.drawHud();
         }
     }
     drawings.drawer = new getDrawer(drawings.ctx);
@@ -178,13 +267,13 @@
     var html = document.documentElement;
 
     var helper = {
-        drawAlert: function(msg) {
+        drawAlert: function(msg, color, time) {
+            var cnt = ++notifCnt;
             alert = document.getElementById("alert");
-            alert.innerHTML = msg;
-            alert.style.display = "block";
+            alert.innerHTML += '<div id="notif' + cnt + '" style="width:100%;background-color:' + color + ';padding: 3px 0;margin-top: 1px;border-radius: 20px">' + msg + '</div>';
             setTimeout(function(){
-                alert.style.display = "none";
-            }, 5000);
+                document.getElementById("alert").removeChild(document.getElementById("notif"+cnt));
+            }, time);
         },
         displayPeople: function(b) {
             if (b && self.pseudo) {
@@ -282,17 +371,17 @@
             document.getElementById('askInfos').style.display = "none";
             overlay.drawHud();
             helper.updatePeople();
-            helper.drawAlert("Press [Space] to see connected people.");
+            helper.drawAlert("Press [Space] to see connected people. You can also switch to eraser with [KEYPAD_0] and change size with [KEYPAD_1] to [KEYPAD_5].", "blue", 10000);
         });
 
         io.on('userConnect', function(user) {
             users[user.id] = user;
             helper.updatePeople();
-            helper.drawAlert("<span style='color:green'>" + user.pseudo + " has connected.</span>");
+            helper.drawAlert(user.pseudo + " has connected.", "green", 3000);
         });
 
         io.on('userDc', function(user) {
-            helper.drawAlert("<span style='color:red'>" + user.pseudo + " has disconnected.</span>");
+            helper.drawAlert(user.pseudo + " has disconnected.", "red", 2000);
             delete(users[user.id]);
             helper.updatePeople();
         });
@@ -374,16 +463,19 @@
 
     function onKeyDown(e) {
         switch (e.keyCode) {
-            case 13:
+            case 13: // enter
             server.enter(document.getElementById("pseudo").value);
             break;
-            case 32:
+            case 32: // space
             helper.displayPeople(true);
             break;
-            case 67:
+            case 67: // c
             server.askClear();
             break;
-            case 96:
+            case 80: // p
+            overlay.detectColor();
+            break;
+            case 96: // 0
             drawings.pen.eraser();
             break;
             case 97:
@@ -391,10 +483,11 @@
             case 99:
             case 100:
             case 101:
+            case 102:
             drawings.pen.setSize(e.keyCode - 96);
             break;
             default:
-            console.log(e.keyCode);
+            //console.log(e.keyCode);
         }
     }
 
@@ -406,54 +499,19 @@
         }
     }
 
-    function onStopDrawing() {
-        clearInterval(nospamint);
-        document.getElementById("drawings").onmousemove = null;
-    }
 
-    var nospamint = 0;
-    document.getElementById("drawings").onmousedown = function(e) {
-        if (self.pseudo) {
-            x = e.layerX;
-            y = e.layerY;
-            lastX = x;
-            lastY = y;
-            io.emit("draw", {sx: toCoordX(x), sy: toCoordY(y), color: self.color, type: "circle"});
-            drawings.drawer.circle(x, y, null, null, self.color, self.radius);
-            nospamint = setInterval(function() {
-                nospam = false;
-            }, 30);
-        }
-        document.getElementById("drawings").onmousemove = function(e) {
-            if (!nospam) {
-                nospam = true;
-                io.emit("draw", {sx: toCoordX(lastX), sy: toCoordY(lastY), ex: toCoordX(e.layerX), ey: toCoordY(e.layerY), color: self.color, type: "line"});
-                drawings.drawer.line(lastX, lastY, e.layerX, e.layerY, self.color, self.radius);
-                lastX = e.layerX;
-                lastY = e.layerY;
-            }
-        }
-    }
-    document.getElementById("drawings").onmouseup = onStopDrawing
-    document.getElementById("drawings").onmouseleave = onStopDrawing
+    document.getElementById("drawings").onmousedown = drawings.events.onMouseDown;
+    document.getElementById("drawings").onmouseup = drawings.events.onStopDrawing;
+    document.getElementById("drawings").onmouseleave = drawings.events.onStopDrawing;
 
-    document.getElementById("overlay").onmousedown = function(e) {
-        overlay.colorX = e.layerX;
-        overlay.colorY = e.layerY;
-        document.getElementById("overlay").onmousemove = function(e) {
-            overlay.colorX = e.layerX;
-            overlay.colorY = e.layerY;
-        }
-        overlay.colorTimer = setInterval(overlay.getColor, 50);
-    }
-    document.getElementById("overlay").onmouseup = function() {
-        clearInterval(overlay.colorTimer);
-        document.getElementById("overlay").onmousemove = null;
-        io.emit('setColor', self.color);
-    }
+    document.getElementById("overlay").onmousedown = overlay.events.onMouseDown;
+    document.getElementById("overlay").onmouseup = overlay.events.onMouseUp;
+    document.getElementById("overlay").onmouseleave = overlay.events.onMouseUp;
 
     document.getElementById("pseudo").style.top = "0px";
-    document.getElementById("color").value = Math.floor(Math.random()*16777215).toString(16);
+    //document.getElementById("color").value = Math.floor(Math.random()*16777215).toString(16);
+    document.getElementById("color").value = rgbToHex(Math.floor(Math.random()*255), Math.floor(Math.random()*255), Math.floor(Math.random()*255));
+    drawings.init();
     </script>
 </body>
 </html>

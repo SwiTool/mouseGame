@@ -17,12 +17,12 @@ var voteAccept = 0;
 var voteDecline = 0;
 var voters = 0;
 
-var penSizes = [1, 4, 8, 12, 16];
+var penSizes = [1, 4, 8, 12, 16, 40];
 
-var paintCountMax = 10;      // limit 5 lines
+var paintCountMax = 10;      // limit 10 lines
 var paintCountDelay = 100   // for every 100ms
 
-var maxSavedLines = 1000;
+var maxSavedLines = 10000;
 
 var defaultRadius = 4;
 var defaultColor = "#000000";
