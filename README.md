@@ -3,9 +3,15 @@
 Working on:
 Waiting for ideas...
 
+v0.0.7:
+- code optimization
+- paint when point&move are linked
+- added real overlay
+- added colorpicker inside the room
+
 v0.0.6:
-- Eraser ([KEYPAD 0] to switch)
-- Different sizes of paint ([KEYPAD 1] to [KEYPAD 5])
+- eraser ([KEYPAD 0] to switch)
+- different sizes of paint ([KEYPAD 1] to [KEYPAD 5])
 
 v0.0.5:
 - poll to clear screen ([C] key) - under 3 players, it clears without voting.

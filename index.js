@@ -148,6 +148,14 @@ io.on('connection', function(socket) {
         }
         socket.emit('penChanged', {color: users[socket.id].color, radius: users[socket.id].radius});
     });
+
+    socket.on('setColor', function(color) {
+        // TODO: vérifier si c'est une bonne couleur
+        // TODO: envoyer a tout le monde son changement de couleur
+        users[socket.id].nativeColor = color;
+        users[socket.id].color = color;
+        socket.emit('penChanged', {color: users[socket.id].color, radius: users[socket.id].radius})
+    });
 });
 
 http.listen(1337, function(){
