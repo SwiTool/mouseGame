@@ -3,7 +3,6 @@ var app = express();
 var http = require('http').Server(app);
 var io = require('socket.io')(http);
 
-var colors = ["#AA0000", "#00AA00", "#0000AA", "#AAAA00", "#AA00AA", "#00AAAA", "#AAAAAA", "#EEAA66", "#777FF5", "#43C85D"];
 var i = 0;
 var users = {};
 var lines = [];
@@ -17,15 +16,22 @@ var voteAccept = 0;
 var voteDecline = 0;
 var voters = 0;
 
-var penSizes = [1, 4, 8, 12, 16, 40];
+// room default values
+var maxPoints = 100;        // 100 points
+var timeToDraw = 120000;    // 120s // 2mn
+var gainDraw = 10;          // 10 points
+var gainGuess = 5;          // 5 points
 
+
+// server variables
+var penSizes = [1, 4, 8, 12, 16, 40];
 var paintCountMax = 10;      // limit 10 lines
 var paintCountDelay = 100   // for every 100ms
-
 var maxSavedLines = 10000;
 
 var defaultRadius = 4;
 var defaultColor = "#000000";
+
 
 app.use(express.static(__dirname + '/public'));
 
@@ -156,6 +162,18 @@ io.on('connection', function(socket) {
         users[socket.id].color = color;
         socket.emit('penChanged', {color: users[socket.id].color, radius: users[socket.id].radius})
     });
+
+    socket.on('createRoom', function() {
+        var room = new Room();
+        room.users[socket.id] = {
+            wordsGuessed: 0,
+            wordsAsDrawer: 0,
+            totalWordsDrawer: 0,
+            points: 0
+        }
+        socket.emit("createdRoom", room);
+    });
+
 });
 
 http.listen(1337, function(){
@@ -180,4 +198,12 @@ function voteResult() {
             users[id].hasVoted = false;
         });
     }, 5000);
+}
+
+function Room() {
+    this.users = {};
+    this.maxPoints = maxPoints;
+    this.timeToDraw = timeToDraw;
+    this.gainGuess = gainGuess;
+    this.gainDraw = gainDraw;
 }

@@ -1,6 +1,8 @@
 # SockPaint
 
-Working on: waiting for ideas..
+Working on:
+- Create rooms
+- Join rooms
 
 v0.0.8:
 - added pipette (key [P] then click to choose color. You can click&drag to be more accurate)

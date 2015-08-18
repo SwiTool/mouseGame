@@ -1,4 +1,4 @@
-<!doctype html>
+    <!doctype html>
 <html>
 <head>
     <title>mouseGame</title>
@@ -30,10 +30,13 @@
         </div>
     </div>
     <div id="people" style="width:80%;height:50%;position:absolute;top:25%;left:10%;background-color:rgba(0,0,0,0.7);border:3px dashed black;display:none"></div>
-    <div id="alert" style="width: 300px;color: white;position: absolute;bottom: 70px;left: 0;text-align: center;"></div>
-    <div id="vote" style="width:300px;height:115px;color:white;background-color:rgba(0, 0, 0, 0.8);position:absolute;top:50px;right:50px;border:1px dashed grey;text-align:center;border-radius: 50px;display:none"></div>
+    <div id="vote" style="width:300px;height:115px;color:white;background-color:rgba(0, 0, 0, 0.8);position:absolute;top:50px;right:50px;border:1px dashed grey;text-align:center;border-radius: 50px;display:none;z-index;950"></div>
     <canvas id="overlay"></canvas>
-    <canvas id="drawings"></canvas>
+    <canvas id="drawings" style="border: 1px solid black"></canvas>
+    <div id="rightbar" style="width:350px;position:absolute;right:0;top:0;z-index:900;display:none">
+        <div id="alert" style="width: 300px;color: white;position: relative;top: 5px;left: 0;right:0;bottom:0;text-align: center;margin: auto"></div>
+        <div id="chat" style="width: 350px;color: white;position: relative;bottom: 5px;left: 0;right:0;bottom:0;text-align: center;margin: auto;"></div>
+    </div>
     <script type="text/javascript">
     // mouse position, screen size
     var x = -1;
@@ -95,14 +98,21 @@
             gradient.addColorStop(0.84, "rgb(255, 255,   0)");
             gradient.addColorStop(1,    "rgb(255,   0,   0)");
             overlay.ctx.fillStyle = gradient;
-            overlay.ctx.fillRect(pseudoBarWidth, 0, overlay.sizex - pseudoBarWidth, overlay.sizey);
+            overlay.ctx.fillRect(pseudoBarWidth + 20, 0, overlay.sizex - pseudoBarWidth - 20, overlay.sizey);
+
             gradient = overlay.ctx.createLinearGradient(0, 0, 0, overlay.sizey);
             gradient.addColorStop(0,   "rgba(255, 255, 255, 1)");
             gradient.addColorStop(0.5, "rgba(255, 255, 255, 0)");
             gradient.addColorStop(0.5, "rgba(0,     0,   0, 0)");
             gradient.addColorStop(1,   "rgba(0,     0,   0, 1)");
             overlay.ctx.fillStyle = gradient;
-            overlay.ctx.fillRect(pseudoBarWidth, 0, overlay.sizex - (pseudoBarWidth * 2), overlay.sizey);
+            overlay.ctx.fillRect(pseudoBarWidth + 20, 0, overlay.sizex - (pseudoBarWidth * 2) - 20, overlay.sizey);
+
+            gradient = overlay.ctx.createLinearGradient(0, 0, 0, overlay.sizey);
+            gradient.addColorStop(0, "rgb(255, 255, 255)");
+            gradient.addColorStop(1, "rgb(  0,   0,   0)");
+            overlay.ctx.fillStyle = gradient;
+            overlay.ctx.fillRect(pseudoBarWidth, 0, 20, overlay.sizey);
         },
         getColor: function(e) {
             var newColor;
@@ -231,10 +241,21 @@
     }
     drawings.drawer = new getDrawer(drawings.ctx);
 
+    var rightbar = {
+        ctx: document.getElementById("rightbar"),
+        alert: {
+            ctx: document.getElementById("alert"),
+        },
+        chat: {
+            ctx: document.getElementById("chat"),
+        }
+    }
+
     function getDrawer(ctx) {
         this.line = function(mx, my, mex, mey, color, radius, redraw) {
-            if (!redraw)
-            lines.push({sx: toCoordX(mx), sy: toCoordY(my), ex: toCoordX(mex), ey: toCoordY(mey), color: color, radius: radius, type: "line"});
+            if (!redraw) {
+                lines.push({sx: toCoordX(mx), sy: toCoordY(my), ex: toCoordX(mex), ey: toCoordY(mey), color: color, radius: radius, type: "line"});
+            }
             ctx.lineJoin = "round";
             ctx.beginPath();
             ctx.strokeStyle = color;
@@ -270,7 +291,7 @@
         drawAlert: function(msg, color, time) {
             var cnt = ++notifCnt;
             alert = document.getElementById("alert");
-            alert.innerHTML += '<div id="notif' + cnt + '" style="width:100%;background-color:' + color + ';padding: 3px 0;margin-top: 1px;border-radius: 20px">' + msg + '</div>';
+            alert.innerHTML += '<div id="notif' + cnt + '" style="width:100%;background-color:' + color + ';padding: 10px 0;margin-top: 1px;border-radius: 5px">' + msg + '</div>';
             setTimeout(function(){
                 document.getElementById("alert").removeChild(document.getElementById("notif"+cnt));
             }, time);
@@ -371,7 +392,7 @@
             document.getElementById('askInfos').style.display = "none";
             overlay.drawHud();
             helper.updatePeople();
-            helper.drawAlert("Press [Space] to see connected people. You can also switch to eraser with [KEYPAD_0] and change size with [KEYPAD_1] to [KEYPAD_5].", "blue", 10000);
+            helper.drawAlert("Press [Space] to see connected people. You can also switch to eraser with [KEYPAD_0] and change size with [KEYPAD_1] to [KEYPAD_5].", "blue", 1000000);
         });
 
         io.on('userConnect', function(user) {
@@ -413,19 +434,23 @@
             self.color = obj.color;
             overlay.drawHud();
         });
+
+        io.on('createdRoom', function(obj){
+            console.log(obj);
+        });
     });
 
     function toCoordX(x) {
-        return ((x*100)/width);
+        return ((x*100)/drawings.canvas.width);
     }
     function toCoordY(y) {
-        return ((y*100)/height);
+        return ((y*100)/drawings.canvas.height);
     }
     function toMapX(x) {
-        return ((width/100)*x);
+        return ((drawings.canvas.width*x)/100);
     }
     function toMapY(y) {
-        return ((height/100)*y);
+        return ((drawings.canvas.height*y)/100);
     }
 
     function componentToHex(c) {
@@ -449,10 +474,15 @@
         overlay.canvas.style.top = overlay.py+"px";
         overlay.canvas.style.left = overlay.px+"px";
 
+        rightbar.ctx.style.width = "350px";
+        rightbar.ctx.style.height = height - overlayHeight + "px";
+        rightbar.alert.ctx.style.height = (height - overlayHeight) / 3 + "px";
+        rightbar.chat.ctx.style.height = (height - overlayHeight) / 1.5 + "px";
+
         drawings.canvas.width = width;
-        drawings.canvas.height = height - overlayHeight;
-        drawings.canvas.style.top = drawings.py+"px";
-        drawings.canvas.style.left = drawings.px+"px";
+        drawings.canvas.height = height - overlayHeight - 1;
+        drawings.canvas.style.top = "0px";
+        drawings.canvas.style.left = "0px";
         drawings.redraw();
         overlay.drawHud();
     }
